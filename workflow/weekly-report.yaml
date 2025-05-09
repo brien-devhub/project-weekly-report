@@ -3,7 +3,7 @@ name: Weekly Asana Report
 on:
   schedule:
 
-    # Runs every Monday at 12:00 UTC (08:00 ET)
+    # Runs every Friday at 14:45 UTC (10:45 ET)
     - cron: '45 14 * * 5'
 jobs:
   report:
