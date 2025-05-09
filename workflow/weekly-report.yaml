@@ -3,7 +3,7 @@ name: Weekly Asana Report
 on:
   schedule:
     # Runs every Monday at 12:00 UTC (08:00 ET)
-    - cron: '0 12 * * 1'
+    - cron: '45 14 * * 5'
 
 jobs:
   report:
@@ -28,26 +28,12 @@ jobs:
           python generate_report.py > report.md
           echo "::set-output name=table::$(cat report.md)"
 
-      # Option A: send via email
-        if: false
-        name: Send email
-        uses: dawidd6/action-send-mail@v3
-        if: always()
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.EMAIL_USER }}
-          password: ${{ secrets.EMAIL_PASS }}
-          subject: Weekly Web Dev Milestones
-          to: team@example.com
-          body: |
-            Here’s this week’s Asana milestones:
-            ${{ steps.gen.outputs.table }} 
+      
     
 
       # Option B: post to Slack
       - name: Post to Slack
-        if: false  # set to true and disable the email step if you prefer Slack
+        if: true  # set to true and disable the email step if you prefer Slack
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
