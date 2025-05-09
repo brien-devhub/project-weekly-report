@@ -4,7 +4,7 @@ on:
   schedule:
 
     # Runs every Friday at 14:455 UTC (10:55 ET)
-    - cron: '55 14 * * 5'
+    - cron: '15 15 * * 5'
 jobs:
   report:
     runs-on: ubuntu-latest
