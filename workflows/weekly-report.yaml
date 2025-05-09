@@ -1,0 +1,45 @@
+name: Weekly Asana Report
+
+on:
+  schedule:
+
+    # Runs every Friday at 14:45 UTC (10:45 ET)
+    - cron: '45 14 * * 5'
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Generate Markdown report
+        id: gen
+        env:
+          ASANA_PAT:        ${{ secrets.ASANA_PAT }}
+          ASANA_REPORT_GID: ${{ secrets.ASANA_REPORT_GID }}
+        run: |
+          python generate_report.py > report.md
+          echo "::set-output name=table::$(cat report.md)"
+
+   
+      
+    
+
+      # Option B: post to Slack
+      - name: Post to Slack
+        if: true  # set to true and disable the email step if you prefer Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Here’s this week’s Asana milestones:\n```{{ steps.gen.outputs.table }}```"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
