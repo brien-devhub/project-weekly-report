@@ -1,15 +1,18 @@
-name: Weekly Asana Report
+name: Weekly Milestones to Slack
 
 on:
   schedule:
+    # 10:30 AM ET Friday → 14:30 UTC Friday
+    - cron: '30 14 * * 5'
+  workflow_dispatch:
 
-    # Runs every Friday at 14:455 UTC (10:55 ET)
-    - cron: '55 14 * * 5'
 jobs:
   report:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -19,10 +22,10 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run weekly milestones
+      - name: Run weekly milestones script
         env:
-          ASANA_PAT:            ${{ secrets.ASANA_PAT }}
-          ASANA_WORKSPACE_GID:  ${{ secrets.ASANA_WORKSPACE_GID }}
-          SLACK_WEBHOOK_URL:    ${{ secrets.SLACK_WEBHOOK_URL }}
+          ASANA_PAT:              ${{ secrets.ASANA_PAT }}
+          ASANA_WORKSPACE_GID:    ${{ secrets.ASANA_WORKSPACE_GID }}
+          SLACK_WEBHOOK_URL:      ${{ secrets.SLACK_WEBHOOK_URL }}
         
         run: python generate_report.py
