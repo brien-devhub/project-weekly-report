@@ -16,41 +16,42 @@ HEADERS  = {'Authorization': f'Bearer {PAT}'}
 BASE_URL = 'https://app.asana.com/api/1.0'
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
+def fetch_due(task_gid):
+    """Fetch a single task’s due_on date (or return 'TBD')."""
+    resp = requests.get(
+        f'{BASE_URL}/tasks/{task_gid}',
+        headers=HEADERS,
+        params={'opt_fields': 'due_on'}
+    )
+    if resp.ok:
+        return resp.json().get('data', {}).get('due_on') or 'TBD'
+    return 'TBD'
+
 def get_section_gid(project_gid, section_name="Critical Milestones"):
     """Return the GID of the named section, or None."""
     resp = requests.get(
         f"{BASE_URL}/projects/{project_gid}/sections",
         headers=HEADERS
     )
-    data = resp.json().get('data', [])
-    for sec in data:
+    if not resp.ok:
+        return None
+    for sec in resp.json().get('data', []):
         if sec.get('name') == section_name:
             return sec['gid']
     return None
 
-def fetch_tasks_in_section(section_gid):
-    """Fetch tasks in that section with due_on & completed via Search API."""
-    resp = requests.get(
-        f"{BASE_URL}/workspaces/{WS_GID}/tasks/search",
-        headers=HEADERS,
-        params={
-            "sections.any": section_gid,
-            "opt_fields": "gid,name,due_on,completed"
-        }
-    )
-    return resp.json().get('data', [])
-
 def fetch_latest_comment(project_gid):
     """Grab the most recent comment_added across all tasks in the project."""
-    # 1. list all tasks in project
     resp = requests.get(
         f"{BASE_URL}/projects/{project_gid}/tasks",
         headers=HEADERS,
         params={"opt_fields": "gid"}
     )
-    task_gids = [t["gid"] for t in resp.json().get('data', [])]
+    if not resp.ok:
+        return '–'
     comments = []
-    for gid in task_gids:
+    for t in resp.json().get('data', []):
+        gid = t['gid']
         stories = requests.get(
             f"{BASE_URL}/tasks/{gid}/stories",
             headers=HEADERS,
@@ -60,7 +61,7 @@ def fetch_latest_comment(project_gid):
             if s.get('resource_subtype') == "comment_added" and s.get('text'):
                 comments.append(s)
     if not comments:
-        return "–"
+        return '–'
     comments.sort(key=lambda s: s['created_at'], reverse=True)
     return comments[0]['text'].replace('\n', ' ')
 
@@ -85,33 +86,48 @@ for proj in projects:
     if "WORKING DRAFT" in name.upper():
         continue
 
-    # find the Critical Milestones section
+    # find Critical Milestones section
     sec_gid = get_section_gid(pid)
     if not sec_gid:
         continue
 
-    # fetch all tasks in that section
-    tasks = fetch_tasks_in_section(sec_gid)
+    # pull tasks (compact) in that section
+    sec_tasks_resp = requests.get(
+        f"{BASE_URL}/sections/{sec_gid}/tasks",
+        headers=HEADERS,
+        params={"opt_fields": "gid,name,completed"}
+    )
+    if not sec_tasks_resp.ok:
+        continue
+    section_tasks = sec_tasks_resp.json().get('data', [])
 
     # skip if Launch milestone exists and is completed
-    launch = next((t for t in tasks if t['name'] == "Launch"), None)
+    launch = next((t for t in section_tasks if t['name'] == "Launch"), None)
     if launch and launch.get('completed'):
         continue
 
-    # format Launch string
-    launch_date = launch.get('due_on') or "TBD" if launch else None
-    launch_str  = f"{launch['name']} – {launch_date}" if launch else "–"
+    # format Launch with its real due date
+    if launch:
+        launch_date = fetch_due(launch['gid'])
+        launch_str  = f"Launch – {launch_date}"
+    else:
+        launch_str  = '–'
 
-    # find next incomplete milestone
-    pending = [t for t in tasks if not t['completed'] and t.get('due_on')]
-    if pending:
-        pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
-        nxt = pending[0]
+    # find next incomplete milestone with a real date
+    pending = [t for t in section_tasks if not t['completed']]
+    dated = []
+    for t in pending:
+        due = fetch_due(t['gid'])
+        if due not in (None, '', 'TBD'):
+            dated.append({'name': t['name'], 'due_on': due})
+    if dated:
+        dated.sort(key=lambda x: datetime.fromisoformat(x['due_on']))
+        nxt = dated[0]
         next_str = f"{nxt['name']} – {nxt['due_on']}"
     else:
-        next_str = "–"
+        next_str = '–'
 
-    # fetch latest project-level comment
+    # fetch most recent project‐level comment
     latest_comment = fetch_latest_comment(pid)
 
     report.append({
