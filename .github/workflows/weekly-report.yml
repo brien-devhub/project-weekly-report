@@ -24,4 +24,5 @@ jobs:
           ASANA_PAT:            ${{ secrets.ASANA_PAT }}
           ASANA_WORKSPACE_GID:  ${{ secrets.ASANA_WORKSPACE_GID }}
           SLACK_WEBHOOK_URL:    ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python weekly_milestones.py
+        
+        run: python generate_report.py
