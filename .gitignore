@@ -173,3 +173,4 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 workflow/weekly-report.yaml
+.DS_Store
