@@ -19,7 +19,7 @@ def fetch_due(task_gid):
     resp = requests.get(
         f'{BASE_URL}/tasks/{task_gid}',
         headers=HEADERS,
-        params={'opt_fields':'due_on'}
+        params={'opt_fields': 'due_on'}
     )
     if resp.ok:
         return resp.json().get('data', {}).get('due_on') or 'TBD'
@@ -73,13 +73,16 @@ for proj in projects:
         launch_str  = '–'
 
     # Next incomplete milestone
+    # 1) get all incomplete
     pending = [t for t in section_tasks if not t.get('completed')]
-    if pending:
-        for t in pending:
-            t['due_on'] = fetch_due(t['gid'])
-        pending = [t for t in pending if t.get('due_on') not in (None, 'TBD')]
-        pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
-        nxt = pending[0]
+    # 2) fetch due dates
+    for t in pending:
+        t['due_on'] = fetch_due(t['gid'])
+    # 3) keep only those with real dates
+    dated = [t for t in pending if t.get('due_on') not in (None, 'TBD')]
+    if dated:
+        dated.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
+        nxt = dated[0]
         next_str = f"{nxt['name']} – {nxt['due_on']}"
     else:
         next_str = '–'
