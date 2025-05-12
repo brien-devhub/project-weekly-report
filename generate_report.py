@@ -39,33 +39,32 @@ projects = resp.json().get('data', [])
 report   = []
 
 for proj in projects:
-    name = proj.get('name','')
-    pid  = proj.get('gid','')
+    name = proj.get('name', '')
+    pid  = proj.get('gid', '')
 
     # skip drafts
     if 'WORKING DRAFT' in name.upper():
         continue
 
-    # ─── find the Critical Milestones section ────────────────────────────────
+    # find the Critical Milestones section
     secs = requests.get(
         f'{BASE_URL}/projects/{pid}/sections',
         headers=HEADERS
     ).json().get('data', [])
-    cm = next((s for s in secs if s.get('name')=='Critical Milestones'), None)
+    cm = next((s for s in secs if s.get('name') == 'Critical Milestones'), None)
     if not cm:
         continue
 
-    # ─── pull the compact task list in that section ─────────────────────────
+    # pull the compact task list in that section
     section_tasks = requests.get(
         f'{BASE_URL}/sections/{cm["gid"]}/tasks',
         headers=HEADERS,
         params={'opt_fields':'gid,name,completed'}
     ).json().get('data', [])
 
-    # ─── Launch milestone ────────────────────────────────────────────────────
-    launch = next((t for t in section_tasks if t.get('name')=='Launch'), None)
+    # Launch milestone (skip if completed)
+    launch = next((t for t in section_tasks if t.get('name') == 'Launch'), None)
     if launch and launch.get('completed'):
-        # skip any project already launched
         continue
     if launch:
         launch_date = fetch_due(launch['gid'])
@@ -73,13 +72,11 @@ for proj in projects:
     else:
         launch_str  = '–'
 
-    # ─── Next incomplete milestone ───────────────────────────────────────────
+    # Next incomplete milestone
     pending = [t for t in section_tasks if not t.get('completed')]
     if pending:
-        # fetch due dates for sorting
         for t in pending:
             t['due_on'] = fetch_due(t['gid'])
-        # drop those without real due dates
         pending = [t for t in pending if t.get('due_on') not in (None, 'TBD')]
         pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
         nxt = pending[0]
@@ -87,8 +84,7 @@ for proj in projects:
     else:
         next_str = '–'
 
-    # ─── Latest comment across all tasks ─────────────────────────────────────
-    # first, list all tasks in the project
+    # Latest comment across all tasks
     proj_tasks = requests.get(
         f'{BASE_URL}/projects/{pid}/tasks',
         headers=HEADERS,
@@ -102,17 +98,37 @@ for proj in projects:
             params={'opt_fields':'resource_subtype,created_at,text'}
         ).json().get('data', [])
         for s in stories:
-            if s.get('resource_subtype')=='comment_added' and s.get('text'):
+            if s.get('resource_subtype') == 'comment_added' and s.get('text'):
                 comments.append(s)
     if comments:
         comments.sort(key=lambda s: s['created_at'], reverse=True)
-        latest_comment = comments[0]['text'].replace('\n',' ')
+        latest_comment = comments[0]['text'].replace('\n', ' ')
     else:
         latest_comment = '–'
 
-    # ─── assemble this project’s row ────────────────────────────────────────
+    # assemble this project’s row
     report.append({
         'project': name,
         'next':    next_str,
         'launch':  launch_str,
-        'comment
+        'comment': latest_comment
+    })
+
+# ─── BUILD & POST SLACK MESSAGE ────────────────────────────────────────────
+if not report:
+    text = "No active projects with upcoming milestones."
+else:
+    lines = ['*Weekly Critical Milestones*']
+    for r in report:
+        lines.append(
+            f"• *{r['project']}*\n"
+            f"    – Next:   {r['next']}\n"
+            f"    – Launch: {r['launch']}\n"
+            f"    – Latest comment: {r['comment']}"
+        )
+    text = '\n'.join(lines)
+
+slack_resp = requests.post(WEBHOOK, json={'text': text})
+if not slack_resp.ok:
+    sys.stderr.write(f"Slack post failed: {slack_resp.status_code} — {slack_resp.text}\n")
+    sys.exit(1)
