@@ -35,35 +35,46 @@ for proj in projects:
         continue
 
     # ─── Milestones ────────────────────────────────────────────────────────
-    # find Critical Milestones section
-    secs = requests.get(f'{BASE_URL}/projects/{pid}/sections',
-                        headers=HEADERS).json().get('data', [])
-    cm = next((s for s in secs if s['name']=='Critical Milestones'), None)
-    if not cm:
-        continue
-
-    # get tasks in Critical Milestones
+       # get tasks in Critical Milestones (compact)
     section_tasks = requests.get(
         f'{BASE_URL}/sections/{cm["gid"]}/tasks',
         headers=HEADERS,
-        params={'opt_fields':'gid,name,due_on,completed'}
+        params={'opt_fields':'gid,name,completed'}
     ).json().get('data', [])
 
-    # Launch milestone (skip if completed)
+    # helper to fetch a task's due_on
+    def fetch_due(task_gid):
+        resp = requests.get(
+            f'{BASE_URL}/tasks/{task_gid}',
+            headers=HEADERS,
+            params={'opt_fields':'due_on'}
+        )
+        if resp.ok:
+            return resp.json()['data'].get('due_on') or 'TBD'
+        return 'TBD'
+
+    # 1) Launch milestone
     launch = next((t for t in section_tasks if t['name']=='Launch'), None)
     if launch and launch.get('completed'):
         continue
-    launch_date = launch.get('due_on') or 'TBD' if launch else '–'
-    launch_str  = f"{launch['name']} – {launch_date}" if launch else '–'
+    if launch:
+        launch_date = fetch_due(launch['gid'])
+        launch_str  = f"Launch - {launch_date}"
+    else:
+        launch_str  = '-'
 
-    # next incomplete
-    pending = [t for t in section_tasks if not t['completed'] and t.get('due_on')]
+    # 2) Next incomplete milestone
+    pending = [t for t in section_tasks if not t['completed']]
     if pending:
+        # get due dates for all, then sort
+        for t in pending:
+            t['due_on'] = fetch_due(t['gid'])
+        pending = [t for t in pending if t.get('due_on') != 'TBD']
         pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
         nxt = pending[0]
-        next_str = f"{nxt['name']} – {nxt['due_on']}"
+        next_str = f"{nxt['name']} - {nxt['due_on']}"
     else:
-        next_str = '–'
+        next_str = '-'
 
     # ─── Comments ────────────────────────────────────────────────────────────
     # fetch all tasks in the project
