@@ -16,17 +16,6 @@ HEADERS  = {'Authorization': f'Bearer {PAT}'}
 BASE_URL = 'https://app.asana.com/api/1.0'
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
-def fetch_due(task_gid):
-    """Fetch a single task’s due_on date (or return 'TBD')."""
-    resp = requests.get(
-        f'{BASE_URL}/tasks/{task_gid}',
-        headers=HEADERS,
-        params={'opt_fields': 'due_on'}
-    )
-    if resp.ok:
-        return resp.json().get('data', {}).get('due_on') or 'TBD'
-    return 'TBD'
-
 def get_section_gid(project_gid, section_name="Critical Milestones"):
     """Return the GID of the named section, or None."""
     resp = requests.get(
@@ -40,6 +29,18 @@ def get_section_gid(project_gid, section_name="Critical Milestones"):
             return sec['gid']
     return None
 
+def fetch_tasks_in_section(section_gid):
+    """Fetch all tasks in that section with due_on & completed via Search API."""
+    resp = requests.get(
+        f"{BASE_URL}/workspaces/{WS_GID}/tasks/search",
+        headers=HEADERS,
+        params={
+            "sections.any": section_gid,
+            "opt_fields":   "gid,name,due_on,completed"
+        }
+    )
+    return resp.json().get('data', [])
+
 def fetch_latest_comment(project_gid):
     """Grab the most recent comment_added across all tasks in the project."""
     resp = requests.get(
@@ -51,9 +52,8 @@ def fetch_latest_comment(project_gid):
         return '–'
     comments = []
     for t in resp.json().get('data', []):
-        gid = t['gid']
         stories = requests.get(
-            f"{BASE_URL}/tasks/{gid}/stories",
+            f"{BASE_URL}/tasks/{t['gid']}/stories",
             headers=HEADERS,
             params={"opt_fields": "resource_subtype,created_at,text"}
         ).json().get('data', [])
@@ -79,8 +79,8 @@ projects = resp.json().get('data', [])
 report   = []
 
 for proj in projects:
-    name = proj.get('name', '')
-    pid  = proj.get('gid', '')
+    name = proj.get('name','').strip()
+    pid  = proj.get('gid','')
 
     # skip drafts
     if "WORKING DRAFT" in name.upper():
@@ -91,43 +91,30 @@ for proj in projects:
     if not sec_gid:
         continue
 
-    # pull tasks (compact) in that section
-    sec_tasks_resp = requests.get(
-        f"{BASE_URL}/sections/{sec_gid}/tasks",
-        headers=HEADERS,
-        params={"opt_fields": "gid,name,completed"}
-    )
-    if not sec_tasks_resp.ok:
-        continue
-    section_tasks = sec_tasks_resp.json().get('data', [])
+    # get all tasks (with due dates) in that section
+    tasks = fetch_tasks_in_section(sec_gid)
 
     # skip if Launch milestone exists and is completed
-    launch = next((t for t in section_tasks if t['name'] == "Launch"), None)
+    launch = next((t for t in tasks if t['name'].strip().lower() == "launch"), None)
     if launch and launch.get('completed'):
         continue
 
-    # format Launch with its real due date
+    # format Launch string (now coming from search response)
     if launch:
-        launch_date = fetch_due(launch['gid'])
-        launch_str  = f"Launch – {launch_date}"
+        launch_str = f"{launch['name']} – {launch.get('due_on','TBD')}"
     else:
-        launch_str  = '–'
+        launch_str = '–'
 
-    # find next incomplete milestone with a real date
-    pending = [t for t in section_tasks if not t['completed']]
-    dated = []
-    for t in pending:
-        due = fetch_due(t['gid'])
-        if due not in (None, '', 'TBD'):
-            dated.append({'name': t['name'], 'due_on': due})
-    if dated:
-        dated.sort(key=lambda x: datetime.fromisoformat(x['due_on']))
-        nxt = dated[0]
+    # find next incomplete milestone with a due date
+    pending = [t for t in tasks if not t.get('completed') and t.get('due_on')]
+    if pending:
+        pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
+        nxt = pending[0]
         next_str = f"{nxt['name']} – {nxt['due_on']}"
     else:
         next_str = '–'
 
-    # fetch most recent project‐level comment
+    # fetch most recent project-level comment
     latest_comment = fetch_latest_comment(pid)
 
     report.append({
