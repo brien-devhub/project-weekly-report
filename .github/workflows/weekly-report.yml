@@ -25,6 +25,7 @@ jobs:
         env:
           ASANA_PAT:        ${{ secrets.ASANA_PAT }}
           ASANA_REPORT_GID: ${{ secrets.ASANA_REPORT_GID }}
+          SLACK_WEBHOOK_URL: ${{secrets.SLACK_WEBHOOK_URL}}
         run: |
           python generate_report.py > report.md
           echo "::set-output name=table::$(cat report.md)"
