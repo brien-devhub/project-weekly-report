@@ -18,6 +18,7 @@ session  = requests.Session()
 session.headers.update({'Authorization': f'Bearer {PAT}'})
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
+
 def get_section_gid(project_gid, section_name="Critical Milestones"):
     resp = session.get(f"{BASE_URL}/projects/{project_gid}/sections")
     if not resp.ok:
@@ -37,39 +38,34 @@ def fetch_tasks_in_section(section_gid):
     )
     return resp.json().get('data', [])
 
-def fetch_comments_for_task(task_gid):
-    resp = session.get(
-        f"{BASE_URL}/tasks/{task_gid}/stories",
-        params={"opt_fields": "resource_subtype,created_at,text"}
-    )
-    if not resp.ok:
-        return []
-    return [
-        s for s in resp.json().get('data', [])
-        if s.get('resource_subtype') == "comment_added" and s.get('text')
-    ]
-
-def fetch_latest_comment(project_gid):
-    # 1) list tasks in project
+def fetch_latest_comments(project_gid, count=3):
+    # get all task GIDs in the project
     resp = session.get(
         f"{BASE_URL}/projects/{project_gid}/tasks",
         params={"opt_fields": "gid"}
     )
     if not resp.ok:
-        return '–'
+        return []
     task_gids = [t['gid'] for t in resp.json().get('data', [])]
 
     comments = []
-    # 2) parallel fetch stories
+    # parallel fetch stories
     with ThreadPoolExecutor(max_workers=10) as exe:
-        futures = {exe.submit(fetch_comments_for_task, gid): gid for gid in task_gids}
+        futures = [exe.submit(session.get,
+                              f"{BASE_URL}/tasks/{gid}/stories",
+                              params={"opt_fields": "resource_subtype,created_at,text"})
+                   for gid in task_gids]
         for fut in as_completed(futures):
-            comments.extend(fut.result())
-
+            res = fut.result()
+            if not res.ok:
+                continue
+            for s in res.json().get('data', []):
+                if s.get('resource_subtype') == "comment_added" and s.get('text'):
+                    comments.append(s)
     if not comments:
-        return '–'
+        return []
     comments.sort(key=lambda s: s['created_at'], reverse=True)
-    return comments[0]['text'].replace('\n', ' ')
+    return [c['text'].replace('\n',' ') for c in comments[:count]]
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
 resp = session.get(
@@ -97,22 +93,27 @@ for proj in resp.json().get('data', []):
     launch = next((t for t in tasks if t['name'].strip().lower()=="launch"), None)
     if launch and launch.get('completed'):
         continue
+
+    # format Launch date only
     launch_str = launch.get('due_on','TBD') if launch else '–'
 
+    # find next incomplete milestone with date
     pending = [t for t in tasks if not t.get('completed') and t.get('due_on')]
     if pending:
         pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
-        next_str = f"{pending[0]['name']} – {pending[0]['due_on']}"
+        nxt = pending[0]
+        next_str = f"{nxt['name']} – {nxt['due_on']}"
     else:
         next_str = '–'
 
-    latest_comment = fetch_latest_comment(pid)
+    # fetch up to 3 latest comments
+    latest_comments = fetch_latest_comments(pid, count=3)
 
     report.append({
         "project": name,
         "next":    next_str,
         "launch":  launch_str,
-        "comment": latest_comment
+        "comments": latest_comments
     })
 
 # ─── POST TO SLACK ──────────────────────────────────────────────────────────
@@ -121,12 +122,15 @@ if not report:
 else:
     lines = ["*Weekly Critical Milestones*"]
     for r in report:
-        lines.append(
-            f"• *{r['project']}*\n"
-            f"    – Next:   {r['next']}\n"
-            f"    – Launch: {r['launch']}\n"
-            f"    – Latest comment: {r['comment']}"
-        )
+        lines.append(f"• *{r['project']}*")
+        lines.append(f"    – Next:   {r['next']}")
+        lines.append(f"    – Launch: {r['launch']}")
+        if r['comments']:
+            lines.append("    – Recent comments:")
+            for idx, cm in enumerate(r['comments'], start=1):
+                lines.append(f"       {idx}. {cm}")
+        else:
+            lines.append("    – Recent comments: –")
     text = "\n".join(lines)
 
 slack_resp = session.post(WEBHOOK, json={"text": text})

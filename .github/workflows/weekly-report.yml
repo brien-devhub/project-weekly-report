@@ -1,9 +1,11 @@
-name: Weekly Milestones to Slack
+name: Bi-Daily Weekly Milestones to Slack
 
 on:
   schedule:
-    # 10:30 AM ET Friday → 14:30 UTC Friday
-    - cron: '30 14 * * 5'
+    # Every Monday at 8:30 AM ET → 12:30 UTC
+    - cron: '30 12 * * 1'
+    # Every Monday at 1:30 PM ET → 17:30 UTC
+    - cron: '30 17 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -24,8 +26,7 @@ jobs:
 
       - name: Run weekly milestones script
         env:
-          ASANA_PAT:              ${{ secrets.ASANA_PAT }}
-          ASANA_WORKSPACE_GID:    ${{ secrets.ASANA_WORKSPACE_GID }}
-          SLACK_WEBHOOK_URL:      ${{ secrets.SLACK_WEBHOOK_URL }}
-        
+          ASANA_PAT:            ${{ secrets.ASANA_PAT }}
+          ASANA_WORKSPACE_GID:  ${{ secrets.ASANA_WORKSPACE_GID }}
+          SLACK_WEBHOOK_URL:    ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python generate_report.py
