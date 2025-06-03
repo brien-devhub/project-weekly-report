@@ -21,8 +21,8 @@ This repository contains a small Python application and a GitHub Actions workflo
 .
 ├── .github
 │   └── workflows
-│       └── weekly-milestones.yml   # GitHub Actions workflow
-├── weekly_milestones.py            # Main Python script
+│       └── weekly-report.yml       # GitHub Actions workflow
+├── generate_report.py             # Main Python script
 └── README.md                       # This file
 ```
 
@@ -72,7 +72,7 @@ This repository contains a small Python application and a GitHub Actions workflo
 You can test the script on demand:
 
 ```bash
-python weekly_milestones.py
+python generate_report.py
 ```
 
 It will immediately post the report to Slack (make sure your env vars are set).
@@ -81,7 +81,7 @@ It will immediately post the report to Slack (make sure your env vars are set).
 
 ## GitHub Actions Workflow
 
-The file `.github/workflows/weekly-milestones.yml` schedules two runs every Monday:
+The file `.github/workflows/weekly-report.yml` schedules two runs every Monday:
 
 - **08:30 AM Eastern** → `cron: '30 12 * * 1'`  
 - **01:30 PM Eastern** → `cron: '30 17 * * 1'`  
@@ -93,14 +93,14 @@ It also supports manual dispatch via the **Run workflow** button.
 1. Checks out this repo.  
 2. Sets up Python and installs `requests`.  
 3. Exports your three secrets into the environment.  
-4. Runs `python weekly_milestones.py`.  
+4. Runs `python generate_report.py`.
 
 ---
 
 ## Customization
 
 - **Schedule**: Edit the `cron:` lines in the workflow to run at other times or days.  
-- **Comment count**: In `weekly_milestones.py`, change the `count=3` in `fetch_latest_comments(pid, count=3)` to fetch more or fewer comments.  
+- **Comment count**: In `generate_report.py`, change the `count=3` in `fetch_latest_comments(pid, count=3)` to fetch more or fewer comments.
 - **Section name**: If your milestone section is named differently, adjust the default in `get_section_gid(..., section_name="Critical Milestones")`.  
 - **Filtering**: To include or exclude additional projects, modify the project-name checks in the main loop.
 

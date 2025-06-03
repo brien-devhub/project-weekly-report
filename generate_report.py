@@ -95,7 +95,7 @@ for proj in resp.json().get('data', []):
         continue
 
     # format Launch date only
-    launch_str = launch.get('due_on','TBD') if launch else '–'
+    launch_str = (launch.get('due_on') or 'TBD') if launch else '–'
 
     # find next incomplete milestone with date
     pending = [t for t in tasks if not t.get('completed') and t.get('due_on')]
