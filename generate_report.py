@@ -121,16 +121,18 @@ if not report:
     text = "No active projects with upcoming milestones."
 else:
     lines = ["*Weekly Critical Milestones*"]
-    for r in report:
+    for idx, r in enumerate(report):
         lines.append(f"• *{r['project']}*")
         lines.append(f"    – Next:   {r['next']}")
         lines.append(f"    – Launch: {r['launch']}")
         if r['comments']:
             lines.append("    – Recent comments:")
-            for idx, cm in enumerate(r['comments'], start=1):
-                lines.append(f"       {idx}. {cm}")
+            for cidx, cm in enumerate(r['comments'], start=1):
+                lines.append(f"       {cidx}. {cm}")
         else:
             lines.append("    – Recent comments: –")
+        if idx != len(report) - 1:
+            lines.append("────────────────────")
     text = "\n".join(lines)
 
 slack_resp = session.post(WEBHOOK, json={"text": text})
