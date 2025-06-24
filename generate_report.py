@@ -88,15 +88,17 @@ def main():
 
     lines = ["*Weekly Project Report*"]
     for r in rows:
-        lines.append("> *Most recent task comments:*\n" + "\n".join(r["comments"]))
-
-*{r['name']}*")
+        lines.append("")
+        lines.append(f"*{r['name']}*")
         lines.append(f"> *Next Open Milestone:* {r['next']}")
         lines.append(f"> *Projected Launch Date:* {r['launch']}")
         if r["comments"]:
-            lines.append(f"> *Most recent task comments:*\n" + "\n".join(r["comments"]))
+            lines.append("> *Most recent task comments:*
+" + "
+".join(r["comments"]))
 
-    post_to_slack("\n".join(lines))
+    post_to_slack("
+".join(lines))
 
 if __name__ == "__main__":
     main()
