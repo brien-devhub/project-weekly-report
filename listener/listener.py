@@ -42,7 +42,7 @@ def handle_slack_event():
 
     # Slack URL verification challenge
     if payload.get("type") == "url_verification":
-        return payload.get("challenge"), 200
+        return payload.get("challenge"), 200, {"Content-Type": "text/plain"}
 
     event = payload.get("event", {})
     if event.get("type") != "message" or "thread_ts" not in event:
