@@ -8,5 +8,5 @@ steps:
            '--region', 'us-west2',
            '--platform', 'managed',
            '--allow-unauthenticated',
-           '--set-env-vars', 'ASANA_PAT=your_token_here']
+           '--set-env-vars', 'ASANA_PAT={{ $secrets.ASANA_PAT }}']
 timeout: '900s'
