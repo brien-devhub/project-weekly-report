@@ -9,29 +9,36 @@ SLACK_WEBHOOK = os.getenv("SLACK_WEBHOOK")
 BASE_URL = "https://app.asana.com/api/1.0"
 HEADERS = {"Authorization": f"Bearer {ASANA_PAT}"}
 
+
 def get_projects():
     res = requests.get(f"{BASE_URL}/portfolios/{REPORT_GID}/items", headers=HEADERS)
     return res.json().get("data", [])
+
 
 def get_sections(project_gid):
     res = requests.get(f"{BASE_URL}/projects/{project_gid}/sections", headers=HEADERS)
     return res.json().get("data", [])
 
+
 def get_tasks(section_gid):
     res = requests.get(f"{BASE_URL}/sections/{section_gid}/tasks", headers=HEADERS)
     return res.json().get("data", [])
 
+
 def get_task_details(task_gid):
     res = requests.get(f"{BASE_URL}/tasks/{task_gid}", headers=HEADERS)
     return res.json().get("data", {})
+
 
 def get_task_comments(task_gid):
     res = requests.get(f"{BASE_URL}/tasks/{task_gid}/stories", headers=HEADERS)
     comments = res.json().get("data", [])
     return [c for c in comments if c["type"] == "comment"]
 
+
 def is_incomplete(task):
     return task.get("completed") is False and task.get("resource_subtype") == "default_task"
+
 
 def format_project(project):
     sections = get_sections(project["gid"])
@@ -43,9 +50,10 @@ def format_project(project):
     incomplete = [get_task_details(t["gid"]) for t in tasks if is_incomplete(t)]
     if not incomplete:
         return None
-    incomplete.sort(key=lambda t: t.get("due_on") or "9999-12-31")
 
+    incomplete.sort(key=lambda t: t.get("due_on") or "9999-12-31")
     next_milestone = incomplete[0]
+
     launch_milestone = next((t for t in tasks if "launch" in t["name"].lower()), None)
     launch_date = None
     if launch_milestone:
@@ -73,8 +81,10 @@ def format_project(project):
         "comments": comments
     }
 
+
 def post_to_slack(message):
     requests.post(SLACK_WEBHOOK, json={"text": message})
+
 
 def main():
     projects = get_projects()
@@ -92,13 +102,15 @@ def main():
         lines.append(f"*{r['name']}*")
         lines.append(f"> *Next Open Milestone:* {r['next']}")
         lines.append(f"> *Projected Launch Date:* {r['launch']}")
+        lines.append("> *Most recent task comments:*")
         if r["comments"]:
-            lines.append("> *Most recent task comments:*
-" + "
-".join(r["comments"]))
+            for comment in r["comments"]:
+                lines.append(comment)
+        else:
+            lines.append("- No comments found")
 
-    post_to_slack("
-".join(lines))
+    post_to_slack("\n".join(lines))
+
 
 if __name__ == "__main__":
     main()
