@@ -7,5 +7,9 @@ steps:
            '--region', 'us-west2',
            '--platform', 'managed',
            '--allow-unauthenticated',
+<<<<<<< HEAD
            '--set-env-vars', 'ASANA_PAT={{ $secrets.ASANA_PAT }}']
+=======
+           '--set-env-vars', 'ASANA_PAT=projects/project-weekly-report/secrets/ASANA_PAT:latest',]
+>>>>>>> f0020de (defining env vars)
 timeout: '900s'
