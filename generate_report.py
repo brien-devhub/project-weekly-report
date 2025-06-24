@@ -88,7 +88,8 @@ def main():
 
     lines = ["*Weekly Project Report*"]
     for r in rows:
-        lines.append(f"
+        lines.append("> *Most recent task comments:*\n" + "\n".join(r["comments"]))
+
 *{r['name']}*")
         lines.append(f"> *Next Open Milestone:* {r['next']}")
         lines.append(f"> *Projected Launch Date:* {r['launch']}")
