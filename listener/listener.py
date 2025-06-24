@@ -38,7 +38,13 @@ def create_task(project_gid, name, assignee):
 
 @app.route("/", methods=["POST"])
 def handle_slack_event():
-    event = request.json.get("event", {})
+    payload = request.json
+
+    # Slack URL verification challenge
+    if payload.get("type") == "url_verification":
+        return payload.get("challenge"), 200
+
+    event = payload.get("event", {})
     if event.get("type") != "message" or "thread_ts" not in event:
         return jsonify({"status": "ignored"}), 200
 
@@ -50,7 +56,7 @@ def handle_slack_event():
     if not assignee:
         return jsonify({"error": "Unmapped user"}), 200
 
-    for line in text.strip().split("\n"):
+    for line in text.strip().split("\\n"):
         if " - " not in line:
             continue
         prefix, task_body = line.split(" - ", 1)
@@ -61,6 +67,3 @@ def handle_slack_event():
         create_task(project_gid, task_body.strip(), assignee)
 
     return jsonify({"status": "processed"}), 200
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
