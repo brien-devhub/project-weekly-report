@@ -5,7 +5,7 @@ steps:
   - name: 'gcr.io/cloud-builders/gcloud'
     args: ['run', 'deploy', 'slack-asana-listener',
            '--image', 'gcr.io/$PROJECT_ID/slack-asana-listener',
-           '--region', 'us-west2',
+           '--region', 'us-centralq',
            '--platform', 'managed',
            '--allow-unauthenticated',
            '--set-env-vars', 'ASANA_PAT={{ $secrets.ASANA_PAT }}']
