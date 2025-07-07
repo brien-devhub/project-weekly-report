@@ -1,6 +1,9 @@
 name: Bi-Daily Weekly Milestones to Slack
 
 on:
+  push:
+    branches:
+      - v1.6
   schedule:
     # Every Monday at 8:30 AM ET → 12:30 UTC
     - cron: '30 12 * * 1'

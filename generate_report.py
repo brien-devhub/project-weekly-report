@@ -38,7 +38,7 @@ def fetch_tasks_in_section(section_gid):
     )
     return resp.json().get('data', [])
 
-def fetch_latest_comments(project_gid, count=3):
+def fetch_latest_comments(project_gid, count=6):
     # get all task GIDs in the project
     resp = session.get(
         f"{BASE_URL}/projects/{project_gid}/tasks",
@@ -106,8 +106,8 @@ for proj in resp.json().get('data', []):
     else:
         next_str = '–'
 
-    # fetch up to 3 latest comments
-    latest_comments = fetch_latest_comments(pid, count=3)
+    # fetch up to 6 latest comments
+    latest_comments = fetch_latest_comments(pid, count=6)
 
     report.append({
         "project": name,
