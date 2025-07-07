@@ -1,139 +1,119 @@
-#!/usr/bin/env python3
 import os
-import sys
 import requests
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ─── CONFIG ──────────────────────────────────────────────────────────────────
-PAT      = os.getenv('ASANA_PAT')
-WS_GID   = os.getenv('ASANA_WORKSPACE_GID')
-WEBHOOK  = os.getenv('SLACK_WEBHOOK_URL')
-if not all([PAT, WS_GID, WEBHOOK]):
-    sys.stderr.write('Error: Missing one of ASANA_PAT, ASANA_WORKSPACE_GID, or SLACK_WEBHOOK_URL\n')
-    sys.exit(1)
+ASANA_PAT      = os.getenv("ASANA_PAT")
+REPORT_GID     = os.getenv("ASANA_REPORT_GID")
+SLACK_WEBHOOK  = os.getenv("SLACK_WEBHOOK")
 
-BASE_URL = 'https://app.asana.com/api/1.0'
-session  = requests.Session()
-session.headers.update({'Authorization': f'Bearer {PAT}'})
+BASE_URL = "https://app.asana.com/api/1.0"
+HEADERS  = {"Authorization": f"Bearer {ASANA_PAT}"}
 
-# ─── HELPERS ─────────────────────────────────────────────────────────────────
+def get_projects():
+    resp = requests.get(f"{BASE_URL}/portfolios/{REPORT_GID}/items", headers=HEADERS)
+    return resp.json().get("data", [])
 
-def get_section_gid(project_gid, section_name="Critical Milestones"):
-    resp = session.get(f"{BASE_URL}/projects/{project_gid}/sections")
-    if not resp.ok:
+def get_sections(project_gid):
+    resp = requests.get(f"{BASE_URL}/projects/{project_gid}/sections", headers=HEADERS)
+    return resp.json().get("data", [])
+
+def get_tasks(section_gid):
+    resp = requests.get(f"{BASE_URL}/sections/{section_gid}/tasks", headers=HEADERS)
+    return resp.json().get("data", [])
+
+def get_task_details(task_gid):
+    resp = requests.get(f"{BASE_URL}/tasks/{task_gid}", headers=HEADERS)
+    return resp.json().get("data", {})
+
+def get_task_comments(task_gid):
+    resp = requests.get(f"{BASE_URL}/tasks/{task_gid}/stories", headers=HEADERS)
+    return [s for s in resp.json().get("data", [])
+            if s.get("type") == "comment"]
+
+def is_incomplete(task):
+    return not task.get("completed") and task.get("resource_subtype") == "default_task"
+
+def format_project(project):
+    # 1. Find Critical Milestones section
+    sections = get_sections(project["gid"])
+    cm = next((s for s in sections if "critical milestone" in s["name"].lower()), None)
+    if not cm:
         return None
-    for sec in resp.json().get('data', []):
-        if sec.get('name') == section_name:
-            return sec['gid']
-    return None
 
-def fetch_tasks_in_section(section_gid):
-    resp = session.get(
-        f"{BASE_URL}/workspaces/{WS_GID}/tasks/search",
-        params={
-            "sections.any": section_gid,
-            "opt_fields":   "gid,name,due_on,completed"
-        }
-    )
-    return resp.json().get('data', [])
+    # 2. Next open milestone
+    cm_tasks   = get_tasks(cm["gid"])
+    details    = [get_task_details(t["gid"]) for t in cm_tasks]
+    open_tasks = [t for t in details if is_incomplete(t)]
+    if not open_tasks:
+        return None
+    open_tasks.sort(key=lambda t: t.get("due_on") or "9999-12-31")
+    next_task = open_tasks[0]
 
-def fetch_latest_comments(project_gid, count=6):
-    # get all task GIDs in the project
-    resp = session.get(
-        f"{BASE_URL}/projects/{project_gid}/tasks",
-        params={"opt_fields": "gid"}
-    )
-    if not resp.ok:
-        return []
-    task_gids = [t['gid'] for t in resp.json().get('data', [])]
+    # 3. Launch date (if not complete)
+    launch = next((t for t in details if "launch" in t["name"].lower()), None)
+    launch_date = None
+    if launch and not launch.get("completed"):
+        launch_date = launch.get("due_on")
 
-    comments = []
-    # parallel fetch stories
-    with ThreadPoolExecutor(max_workers=10) as exe:
-        futures = [exe.submit(session.get,
-                              f"{BASE_URL}/tasks/{gid}/stories",
-                              params={"opt_fields": "resource_subtype,created_at,text"})
-                   for gid in task_gids]
-        for fut in as_completed(futures):
-            res = fut.result()
-            if not res.ok:
+    # 4. Gather up to 6 comments from all non-closed, non-completed tasks
+    all_comments = []
+    for s in sections:
+        name_lower = s["name"].strip().lower()
+        if name_lower in ("closed", "done", "complete"):
+            continue
+        for t in get_tasks(s["gid"]):
+            td = get_task_details(t["gid"])
+            if td.get("completed"):
                 continue
-            for s in res.json().get('data', []):
-                if s.get('resource_subtype') == "comment_added" and s.get('text'):
-                    comments.append(s)
-    if not comments:
-        return []
-    comments.sort(key=lambda s: s['created_at'], reverse=True)
-    return [c['text'].replace('\n',' ') for c in comments[:count]]
+            for c in get_task_comments(td["gid"]):
+                all_comments.append((c["created_at"], c["text"]))
 
-# ─── MAIN ───────────────────────────────────────────────────────────────────
-resp = session.get(
-    f"{BASE_URL}/workspaces/{WS_GID}/projects",
-    params={"archived": "false"}
-)
-if not resp.ok:
-    sys.stderr.write(f"Error fetching projects: {resp.status_code} — {resp.text}\n")
-    sys.exit(1)
+    # sort descending by date and take top 6
+    all_comments.sort(key=lambda x: x[0], reverse=True)
+    comments = [f"- {c[1]}" for c in all_comments[:6]]
 
-report = []
-for proj in resp.json().get('data', []):
-    name = proj.get('name','').strip()
-    pid  = proj.get('gid','')
-    if "WORKING DRAFT" in name.upper():
-        continue
+    return {
+        "name":    project["name"],
+        "next":    f"{next_task['name']} – {next_task.get('due_on','No date')}",
+        "launch":  launch_date or "None",
+        "comments": comments
+    }
 
-    sec_gid = get_section_gid(pid)
-    if not sec_gid:
-        continue
+def post_to_slack(text):
+    requests.post(SLACK_WEBHOOK, json={"text": text})
 
-    tasks = fetch_tasks_in_section(sec_gid)
+def main():
+    rows = []
+    for p in get_projects():
+        # skip draft and template
+        if p["name"].upper().startswith("WORKING DRAFT"):
+            continue
+        if p["name"] == "2025 Project Template":
+            continue
 
-    # skip if Launch is completed
-    launch = next((t for t in tasks if t['name'].strip().lower()=="launch"), None)
-    if launch and launch.get('completed'):
-        continue
+        entry = format_project(p)
+        if entry and entry["launch"] != "None":
+            rows.append(entry)
 
-    # format Launch date only
-    launch_str = launch.get('due_on','TBD') if launch else '–'
-
-    # find next incomplete milestone with date
-    pending = [t for t in tasks if not t.get('completed') and t.get('due_on')]
-    if pending:
-        pending.sort(key=lambda t: datetime.fromisoformat(t['due_on']))
-        nxt = pending[0]
-        next_str = f"{nxt['name']} – {nxt['due_on']}"
-    else:
-        next_str = '–'
-
-    # fetch up to 6 latest comments
-    latest_comments = fetch_latest_comments(pid, count=6)
-
-    report.append({
-        "project": name,
-        "next":    next_str,
-        "launch":  launch_str,
-        "comments": latest_comments
-    })
-
-# ─── POST TO SLACK ──────────────────────────────────────────────────────────
-if not report:
-    text = "No active projects with upcoming milestones."
-else:
-    lines = ["*Weekly Critical Milestones*"]
-    for r in report:
-        lines.append(f"• *{r['project']}*")
-        lines.append(f"    – Next:   {r['next']}")
-        lines.append(f"    – Launch: {r['launch']}")
-        if r['comments']:
-            lines.append("    – Recent comments:")
-            for idx, cm in enumerate(r['comments'], start=1):
-                lines.append(f"       {idx}. {cm}")
+    # build Slack message
+    lines = ["*Weekly Project Report*"]
+    for idx, r in enumerate(rows):
+        lines.append("")  # blank line
+        lines.append(f"*{r['name']}*")
+        lines.append(f"> *Next Open Milestone:* {r['next']}")
+        lines.append(f"> *Projected Launch Date:* {r['launch']}")
+        lines.append("> *Most recent task comments:*")
+        if r["comments"]:
+            for c in r["comments"]:
+                lines.append(c)
         else:
-            lines.append("    – Recent comments: –")
-    text = "\n".join(lines)
+            lines.append("- No comments found")
 
-slack_resp = session.post(WEBHOOK, json={"text": text})
-if not slack_resp.ok:
-    sys.stderr.write(f"Slack post failed: {slack_resp.status_code} — {slack_resp.text}\n")
-    sys.exit(1)
+        # divider except after the last project
+        if idx < len(rows) - 1:
+            lines.append("— — — — — — — — — — —")
+
+    post_to_slack("\n".join(lines))
+
+if __name__ == "__main__":
+    main()
