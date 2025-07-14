@@ -1,14 +1,14 @@
-name: Bi-Daily Weekly Milestones to Slack
+#####name: Bi-Daily Weekly Milestones to Slack
 
-on:
-  schedule:
+#on:
+  #schedule:
     # Every Monday at 8:30 AM ET → 12:30 UTC
     - cron: '30 12 * * 1'
     # Every Monday at 1:30 PM ET → 17:30 UTC
     - cron: '30 17 * * 1'
-  workflow_dispatch:
+  #workflow_dispatch:
 
-jobs:
+#jobs:
   report:
     runs-on: ubuntu-latest
 
